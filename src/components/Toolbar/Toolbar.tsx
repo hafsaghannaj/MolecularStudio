@@ -1,6 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useStore } from '../../store';
-import { parsePDB, parseSDF, parseMOL2, exportPDB } from '../../core/molecular/parsers';
+import { parsePDB, parseSDF, parseMOL2, exportPDB, fetchFromPubChem } from '../../core/molecular/parsers';
 
 export function Toolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -15,6 +15,33 @@ export function Toolbar() {
   const toggleCollaboration = useStore((s) => s.toggleCollaboration);
   const measurementMode = useStore((s) => s.measurementMode);
   const setMeasurementMode = useStore((s) => s.setMeasurementMode);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+
+  const handleSearch = async () => {
+    const query = searchQuery.trim();
+    if (!query) return;
+    setSearching(true);
+    setSearchError('');
+    try {
+      const mol = await fetchFromPubChem(query);
+      loadMolecule(mol);
+      setSearchQuery('');
+    } catch (err: any) {
+      setSearchError(err.message || 'Search failed');
+      setTimeout(() => setSearchError(''), 4000);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
 
   const handleImport = () => {
     fileInputRef.current?.click();
@@ -119,6 +146,38 @@ END`;
         <button className="toolbar-btn btn-accent" onClick={handleLoadDemo}>
           Demo
         </button>
+      </div>
+
+      {/* Molecule Search */}
+      <div className="toolbar-group" style={{ gap: 4 }}>
+        <input
+          type="text"
+          className="form-input"
+          placeholder="Search molecule (e.g. aspirin)"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
+          disabled={searching}
+          style={{
+            maxWidth: 200,
+            width: 200,
+            fontSize: 12,
+            height: 28,
+          }}
+        />
+        <button
+          className="toolbar-btn btn-accent"
+          onClick={handleSearch}
+          disabled={searching || !searchQuery.trim()}
+          style={{ opacity: searching || !searchQuery.trim() ? 0.5 : 1 }}
+        >
+          {searching ? 'Searching...' : 'Search'}
+        </button>
+        {searchError && (
+          <span style={{ color: 'var(--error)', fontSize: 11, whiteSpace: 'nowrap' }}>
+            {searchError}
+          </span>
+        )}
       </div>
 
       {/* View controls */}

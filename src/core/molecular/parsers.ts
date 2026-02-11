@@ -252,6 +252,44 @@ export function parseMOL2(content: string, name: string = 'molecule'): Molecule 
   };
 }
 
+export async function fetchFromPubChem(query: string): Promise<Molecule> {
+  // Step 1: Search PubChem for the compound by name
+  const searchUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(query)}/cids/JSON`;
+  const searchRes = await fetch(searchUrl);
+  if (!searchRes.ok) {
+    throw new Error(`Molecule "${query}" not found on PubChem`);
+  }
+  const searchData = await searchRes.json();
+  const cid = searchData?.IdentifierList?.CID?.[0];
+  if (!cid) {
+    throw new Error(`No results found for "${query}"`);
+  }
+
+  // Step 2: Fetch 3D SDF structure
+  const sdfUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=3d`;
+  const sdfRes = await fetch(sdfUrl);
+
+  if (sdfRes.ok) {
+    const sdfContent = await sdfRes.text();
+    const mol = parseSDF(sdfContent, query);
+    mol.metadata['source'] = 'PubChem';
+    mol.metadata['cid'] = String(cid);
+    return mol;
+  }
+
+  // Step 3: Fallback to 2D SDF if no 3D conformer exists
+  const sdf2dUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=2d`;
+  const sdf2dRes = await fetch(sdf2dUrl);
+  if (!sdf2dRes.ok) {
+    throw new Error(`Could not fetch structure for "${query}" (CID: ${cid})`);
+  }
+  const sdf2dContent = await sdf2dRes.text();
+  const mol = parseSDF(sdf2dContent, query);
+  mol.metadata['source'] = 'PubChem (2D)';
+  mol.metadata['cid'] = String(cid);
+  return mol;
+}
+
 export function exportPDB(molecule: Molecule): string {
   const lines: string[] = [];
   lines.push(`HEADER    ${molecule.name}`);
